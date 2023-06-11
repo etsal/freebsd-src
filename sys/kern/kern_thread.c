@@ -1080,8 +1080,10 @@ calc_remaining(struct proc *p, int mode)
 }
 
 static int
-remain_for_mode(int mode)
+remain_for_mode(struct proc *p, int mode)
 {
+	if (mode == SINGLE_BOUNDARY)
+	    return (p != curproc ? 0 : 1);
 
 	return (mode == SINGLE_ALLPROC ? 0 : 1);
 }
@@ -1190,12 +1192,14 @@ thread_single(struct proc *p, int mode)
 	 * this is not implemented because it is not used.
 	 */
 	KASSERT((mode == SINGLE_ALLPROC && td->td_proc != p) ||
-	    (mode != SINGLE_ALLPROC && td->td_proc == p),
+	    (mode != SINGLE_ALLPROC && td->td_proc == p) ||
+	    (mode == SINGLE_BOUNDARY),
 	    ("mode %d proc %p curproc %p", mode, p, td->td_proc));
 	mtx_assert(&Giant, MA_NOTOWNED);
 	PROC_LOCK_ASSERT(p, MA_OWNED);
 
-	if ((p->p_flag & P_HADTHREADS) == 0 && mode != SINGLE_ALLPROC)
+	if ((p->p_flag & P_HADTHREADS) == 0 &&
+	    (mode != SINGLE_ALLPROC && mode != SINGLE_BOUNDARY))
 		return (0);
 
 	/* Is someone already single threading? */
@@ -1218,7 +1222,7 @@ thread_single(struct proc *p, int mode)
 	PROC_SLOCK(p);
 	p->p_singlethread = td;
 	remaining = calc_remaining(p, mode);
-	while (remaining != remain_for_mode(mode)) {
+	while (remaining != remain_for_mode(p, mode)) {
 		if (P_SHOULDSTOP(p) != P_STOPPED_SINGLE)
 			goto stopme;
 		wakeup_swapper = 0;
@@ -1244,7 +1248,7 @@ thread_single(struct proc *p, int mode)
 		/*
 		 * Maybe we suspended some threads.. was it enough?
 		 */
-		if (remaining == remain_for_mode(mode))
+		if (remaining == remain_for_mode(p, mode))
 			break;
 
 stopme:
@@ -1610,7 +1614,7 @@ thread_unsuspend(struct proc *p)
 }
 
 /*
- * End the single threading mode..
+ * End the single threading mode.
  */
 void
 thread_single_end(struct proc *p, int mode)
@@ -1642,7 +1646,7 @@ thread_single_end(struct proc *p, int mode)
 	 * on the process. The single threader must be allowed
 	 * to continue however as this is a bad place to stop.
 	 */
-	if (p->p_numthreads != remain_for_mode(mode) && !P_SHOULDSTOP(p)) {
+	if (p->p_numthreads != remain_for_mode(p, mode) && !P_SHOULDSTOP(p)) {
                 FOREACH_THREAD_IN_PROC(p, td) {
 			thread_lock(td);
 			if (TD_IS_SUSPENDED(td)) {
