@@ -71,6 +71,8 @@ struct swdevt {
 #ifdef _KERNEL
 
 extern int swap_pager_avail;
+extern struct sx swdev_syscall_lock;
+extern int swap_swapon_enabled;
 
 struct xswdev;
 int swap_dev_info(int name, struct xswdev *xs, char *devname, size_t len);
