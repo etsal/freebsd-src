@@ -100,6 +100,8 @@ dtrace_execexit_func_t	dtrace_fasttrap_exit;
 SDT_PROVIDER_DECLARE(proc);
 SDT_PROBE_DEFINE1(proc, , , exit, "int");
 
+void (*sls_exit_hook)(struct proc *p);
+
 static int kern_kill_on_dbg_exit = 1;
 SYSCTL_INT(_kern, OID_AUTO, kill_on_debugger_exit, CTLFLAG_RWTUN,
     &kern_kill_on_dbg_exit, 0,
@@ -305,6 +307,9 @@ exit1(struct thread *td, int rval, int signo)
 	 */
 	p->p_flag &= ~P_STOPPED_SIG;
 	KASSERT(!P_SHOULDSTOP(p), ("exiting process is stopped"));
+
+	if ((sls_exit_hook != NULL) && (p->p_auroid != 0))
+		sls_exit_hook(p);
 
 	/* Note that we are exiting. */
 	p->p_flag |= P_WEXIT;
