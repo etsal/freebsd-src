@@ -258,6 +258,9 @@ void	fdescfree(struct thread *td);
 void	fdescfree_remapped(struct filedesc *fdp);
 int	fdlastfile(struct filedesc *fdp);
 int	fdlastfile_single(struct filedesc *fdp);
+int	fdisused(struct filedesc *fdp, int fd);
+void	fdunused(struct filedesc *fdp, int fd);
+void	fdused(struct filedesc *fdp, int fd);
 struct	filedesc *fdinit(struct filedesc *fdp, bool prepfiles, int *lastfile);
 struct	filedesc *fdshare(struct filedesc *fdp);
 struct filedesc_to_leader *
