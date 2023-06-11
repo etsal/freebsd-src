@@ -111,12 +111,30 @@ int		 sbuf_count_drain(void *arg, const char *data, int len);
 int		 sbuf_printf_drain(void *arg, const char *data, int len);
 void		 sbuf_putbuf(struct sbuf *);
 
+/*
+ * Set / clear flags
+ */
+#define        SBUF_SETFLAG(s, f)      do { (s)->s_flags |= (f); } while (0)
+#define        SBUF_CLEARFLAG(s, f)    do { (s)->s_flags &= ~(f); } while (0)
+
 #ifdef _KERNEL
 struct uio;
 struct sbuf	*sbuf_uionew(struct sbuf *, struct uio *, int *);
 int		 sbuf_bcopyin(struct sbuf *, const void *, size_t);
 int		 sbuf_copyin(struct sbuf *, const void *, size_t);
 #endif
+
+#ifdef _KERNEL
+#include <sys/malloc.h>
+MALLOC_DECLARE(M_SBUF);
+#define        SBMALLOC(size, flags)   malloc(size, M_SBUF, (flags) | M_ZERO)
+#define        SBFREE(buf)             free(buf, M_SBUF)
+#else /* _KERNEL */
+#define        KASSERT(e, m)
+#define        SBMALLOC(size, flags)   calloc(1, size)
+#define        SBFREE(buf)             free(buf)
+#endif
+
 __END_DECLS
 
 #endif
