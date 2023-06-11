@@ -971,6 +971,12 @@ struct chroot_args {
 int
 sys_chroot(struct thread *td, struct chroot_args *uap)
 {
+	return (kern_chroot(td, __DECONST(char *, uap->path), UIO_USERSPACE));
+}
+
+int
+kern_chroot(struct thread *td, char *path, enum uio_seg segflg)
+{
 	struct nameidata nd;
 	struct proc *p;
 	int error;
@@ -987,7 +993,7 @@ sys_chroot(struct thread *td, struct chroot_args *uap)
 		PROC_UNLOCK(p);
 	}
 	NDINIT(&nd, LOOKUP, FOLLOW | LOCKSHARED | LOCKLEAF | AUDITVNODE1,
-	    UIO_USERSPACE, uap->path, td);
+		segflg, path, td);
 	error = namei(&nd);
 	if (error != 0)
 		goto error;
