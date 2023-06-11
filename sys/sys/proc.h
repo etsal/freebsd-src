@@ -381,6 +381,7 @@ struct thread {
 #ifdef EPOCH_TRACE
 	SLIST_HEAD(, epoch_tracker) td_epochs;
 #endif
+	uint64_t	td_oldtid;	/* (c) Old thread ID. */
 };
 
 struct thread0_storage {
@@ -721,6 +722,8 @@ struct proc {
 	 */
 	LIST_ENTRY(proc) p_orphan;	/* (e) List of orphan processes. */
 	LIST_HEAD(, proc) p_orphans;	/* (e) Pointer to list of orphans. */
+	uint64_t       	p_auroid;       /* (c) Aurora partition ID */
+	LIST_ENTRY(proc) p_aurlist;     /* (c) List of Aurora processes. */
 
 	TAILQ_HEAD(, kq_timer_cb_data)	p_kqtim_stop;	/* (c) */
 	struct vnode	*p_textdvp;	/* (b) Dir containing textvp. */
