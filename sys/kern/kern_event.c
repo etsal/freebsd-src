@@ -102,10 +102,6 @@ TASKQUEUE_DEFINE_THREAD(kqueue_ctx);
 
 static int	kevent_copyout(void *arg, struct kevent *kevp, int count);
 static int	kevent_copyin(void *arg, struct kevent *kevp, int count);
-static int	kqueue_register(struct kqueue *kq, struct kevent *kev,
-		    struct thread *td, int mflag);
-static int	kqueue_acquire(struct file *fp, struct kqueue **kqp);
-static void	kqueue_release(struct kqueue *kq, int locked);
 static void	kqueue_destroy(struct kqueue *kq);
 static void	kqueue_drain(struct kqueue *kq, struct thread *td);
 static int	kqueue_expand(struct kqueue *kq, struct filterops *fops,
@@ -223,9 +219,6 @@ SYSCTL_UINT(_kern, OID_AUTO, kq_calloutmax, CTLFLAG_RW,
 	if (!(islock))							\
 		KQ_UNLOCK((kn)->kn_kq);					\
 } while(0)
-#define KQ_LOCK(kq) do {						\
-	mtx_lock(&(kq)->kq_lock);					\
-} while (0)
 #define KQ_FLUX_WAKEUP(kq) do {						\
 	if (((kq)->kq_state & KQ_FLUXWAIT) == KQ_FLUXWAIT) {		\
 		(kq)->kq_state &= ~KQ_FLUXWAIT;				\
@@ -235,15 +228,6 @@ SYSCTL_UINT(_kern, OID_AUTO, kq_calloutmax, CTLFLAG_RW,
 #define KQ_UNLOCK_FLUX(kq) do {						\
 	KQ_FLUX_WAKEUP(kq);						\
 	mtx_unlock(&(kq)->kq_lock);					\
-} while (0)
-#define KQ_UNLOCK(kq) do {						\
-	mtx_unlock(&(kq)->kq_lock);					\
-} while (0)
-#define KQ_OWNED(kq) do {						\
-	mtx_assert(&(kq)->kq_lock, MA_OWNED);				\
-} while (0)
-#define KQ_NOTOWNED(kq) do {						\
-	mtx_assert(&(kq)->kq_lock, MA_NOTOWNED);			\
 } while (0)
 
 static struct knlist *
@@ -319,8 +303,6 @@ kn_leave_flux(struct knote *kn)
 #ifndef	KN_HASHSIZE
 #define	KN_HASHSIZE		64		/* XXX should be tunable */
 #endif
-
-#define KN_HASH(val, mask)	(((val) ^ (val >> 8)) & (mask))
 
 static int
 filt_nullattach(struct knote *kn)
@@ -1475,7 +1457,7 @@ kqueue_fo_release(int filt)
 /*
  * A ref to kq (obtained via kqueue_acquire) must be held.
  */
-static int
+int
 kqueue_register(struct kqueue *kq, struct kevent *kev, struct thread *td,
     int mflag)
 {
@@ -1737,7 +1719,7 @@ done:
 	return (error);
 }
 
-static int
+int
 kqueue_acquire(struct file *fp, struct kqueue **kqp)
 {
 	int error;
@@ -1760,7 +1742,7 @@ kqueue_acquire(struct file *fp, struct kqueue **kqp)
 	return error;
 }
 
-static void
+void
 kqueue_release(struct kqueue *kq, int locked)
 {
 	if (locked)
