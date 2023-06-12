@@ -409,8 +409,8 @@ static struct sx sw_alloc_sx;
 	(&swap_pager_object_list[((int)(intptr_t)handle >> 4) & (NOBJLISTS-1)])
 
 static struct pagerlst	swap_pager_object_list[NOBJLISTS];
-static uma_zone_t swwbuf_zone;
-static uma_zone_t swrbuf_zone;
+uma_zone_t swwbuf_zone;
+uma_zone_t swrbuf_zone;
 static uma_zone_t swblk_zone;
 static uma_zone_t swpctrie_zone;
 
