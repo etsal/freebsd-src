@@ -599,6 +599,8 @@ int	vfs_bio_getpages(struct vnode *vp, struct vm_page **ma, int count,
 	    int *rbehind, int *rahead, vbg_get_lblkno_t get_lblkno,
 	    vbg_get_blksize_t get_blksize);
 
+void buf_vlist_add(struct buf *bp, struct bufobj *bo, b_xflags_t xflags);
+void buf_vlist_remove(struct buf *bp);
 #endif /* _KERNEL */
 
 #endif /* !_SYS_BUF_H_ */
