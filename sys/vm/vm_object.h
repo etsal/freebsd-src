@@ -112,7 +112,7 @@ struct vm_object {
 	int shadow_count;		/* how many objects that this is a shadow for */
 	vm_memattr_t memattr;		/* default memory attribute for pages */
 	objtype_t type;			/* type of pager */
-	u_short flags;			/* see below */
+	u_int flags;			/* see below */
 	u_short pg_color;		/* (c) color of first page in obj */
 	uint64_t objid;			/* (c) Unique object ID */
 	blockcount_t paging_in_progress; /* (a) Paging (in or out) so don't collapse or destroy */
@@ -210,6 +210,7 @@ struct vm_object {
 #define	OBJ_ONEMAPPING	0x2000		/* One USE (a single, non-forked) mapping flag */
 #define	OBJ_PAGERPRIV1	0x4000		/* Pager private */
 #define	OBJ_SHADOWLIST	0x8000		/* Object is on the shadow list. */
+#define	OBJ_NOSPLIT	0x10000		/* Object should not be split. */
 
 /*
  * Helpers to perform conversion between vm_object page indexes and offsets.

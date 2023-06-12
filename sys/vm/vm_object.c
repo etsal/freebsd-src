@@ -1550,6 +1550,8 @@ vm_object_split(vm_map_entry_t entry)
 	    ("vm_object_split:  Splitting object with multiple mappings."));
 	if ((orig_object->flags & OBJ_ANON) == 0)
 		return;
+	if ((orig_object->flags & OBJ_NOSPLIT) != 0)
+		return;
 	if (orig_object->ref_count <= 1)
 		return;
 	VM_OBJECT_WUNLOCK(orig_object);
