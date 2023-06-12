@@ -120,6 +120,9 @@ static boolean_t vm_object_page_remove_write(vm_page_t p, int flags,
 		    boolean_t *allclean);
 static void	vm_object_backing_remove(vm_object_t object);
 
+uint64_t object_ids = OBJID_START;
+
+
 /*
  *	Virtual memory objects maintain the actual data
  *	associated with allocated virtual memory.  A given
@@ -172,7 +175,20 @@ SYSCTL_COUNTER_U64(_vm_stats_object, OID_AUTO, collapse_waits, CTLFLAG_RD,
 static uma_zone_t obj_zone;
 
 static int vm_object_zinit(void *mem, int size, int flags);
+static int vm_object_zctor(void *mem, int size, void *arg, int flags);
 
+static int
+vm_object_zctor(void *mem, int size, void *args, int flags)
+{
+       vm_object_t object;
+
+       object = (vm_object_t)mem;
+       object->objid = atomic_fetchadd_64(&object_ids, 0x1);
+
+       return(0);
+}
+
+ 
 #ifdef INVARIANTS
 static void vm_object_zdtor(void *mem, int size, void *arg);
 
@@ -297,7 +313,7 @@ vm_object_init(void)
 	 * paging_in_progress is valid always.  Lockless references to
 	 * the objects may acquire pip and then check OBJ_DEAD.
 	 */
-	obj_zone = uma_zcreate("VM OBJECT", sizeof (struct vm_object), NULL,
+	obj_zone = uma_zcreate("VM OBJECT", sizeof (struct vm_object), vm_object_zctor,
 #ifdef INVARIANTS
 	    vm_object_zdtor,
 #else
