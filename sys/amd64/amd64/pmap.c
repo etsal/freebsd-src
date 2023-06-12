@@ -6596,6 +6596,7 @@ retry:
 		}
 	}
 	if (anychanged)
+	if (anychanged)
 		pmap_invalidate_all(pmap);
 	PMAP_UNLOCK(pmap);
 }
@@ -6609,7 +6610,15 @@ pmap_pde_ept_executable(pmap_t pmap, pd_entry_t pde)
 		return (false);
 	return ((pde & EPT_PG_EXECUTE) != 0);
 }
+#else /* VM_NRESERVLEVEL > 0 */
+static bool
+pmap_pde_ept_executable(pmap_t pmap, pd_entry_t pde)
+{
+	return (false);
+}
+#endif /* VM_NRESERVLEVEL > 0 */
 
+#if VM_NRESERVLEVEL > 0
 /*
  * Tries to promote the 512, contiguous 4KB page mappings that are within a
  * single page table page (PTP) to a single 2MB page mapping.  For promotion
@@ -6625,6 +6634,7 @@ pmap_promote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va,
 	pt_entry_t *firstpte, oldpte, pa, *pte;
 	pt_entry_t PG_G, PG_A, PG_M, PG_RW, PG_V, PG_PKU_MASK;
 	vm_page_t mpte;
+	int PG_PTE_CACHE;
 	int PG_PTE_CACHE;
 
 	PG_A = pmap_accessed_bit(pmap);

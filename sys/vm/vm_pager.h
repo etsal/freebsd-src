@@ -90,7 +90,7 @@ struct pagerops {
 };
 
 extern const struct pagerops defaultpagerops;
-extern const struct pagerops swappagerops;
+extern struct pagerops swappagerops;
 extern const struct pagerops vnodepagerops;
 extern const struct pagerops devicepagerops;
 extern const struct pagerops physpagerops;

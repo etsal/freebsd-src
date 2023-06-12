@@ -440,7 +440,7 @@ static void	swap_pager_release_writecount(vm_object_t object,
 static void	swap_pager_freespace(vm_object_t object, vm_pindex_t start,
     vm_size_t size);
 
-const struct pagerops swappagerops = {
+struct pagerops swappagerops = {
 	.pgo_kvme_type = KVME_TYPE_SWAP,
 	.pgo_init =	swap_pager_init,	/* early system initialization of pager	*/
 	.pgo_alloc =	swap_pager_alloc,	/* allocate an OBJT_SWAP object */
