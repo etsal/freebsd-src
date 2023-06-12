@@ -129,8 +129,8 @@ static int	shm_dotruncate_cookie(struct shmfd *shmfd, off_t length,
     void *rl_cookie);
 static int	shm_dotruncate_locked(struct shmfd *shmfd, off_t length,
     void *rl_cookie);
-static int	shm_copyin_path(struct thread *td, const char *userpath_in,
-    char **path_out);
+static int	shm_copyin_path(struct thread *td, const char *path_in,
+    char **path_out, enum uio_seg seg);
 
 static fo_rdwr_t	shm_read;
 static fo_rdwr_t	shm_write;
@@ -589,7 +589,8 @@ shm_close(struct file *fp, struct thread *td)
 }
 
 static int
-shm_copyin_path(struct thread *td, const char *userpath_in, char **path_out) {
+shm_copyin_path(struct thread *td, const char *path_in, char **path_out,
+	enum uio_seg seg) {
 	int error;
 	char *path;
 	const char *pr_path;
@@ -601,10 +602,23 @@ shm_copyin_path(struct thread *td, const char *userpath_in, char **path_out) {
 	/* Construct a full pathname for jailed callers. */
 	pr_pathlen = strcmp(pr_path, "/") ==
 	    0 ? 0 : strlcpy(path, pr_path, MAXPATHLEN);
-	error = copyinstr(userpath_in, path + pr_pathlen,
-	    MAXPATHLEN - pr_pathlen, NULL);
+
+	switch (seg) {
+	case UIO_USERSPACE:
+	    error = copyinstr(path_in, path + pr_pathlen,
+                      MAXPATHLEN - pr_pathlen, NULL);
+	    break;
+	case UIO_SYSSPACE:
+	    error = copystr(path_in, path + pr_pathlen,
+                      MAXPATHLEN - pr_pathlen, NULL);
+	    break;
+	default:
+	    error = EINVAL;
+	    goto out;
+	}
+
 	if (error != 0)
-		goto out;
+	    goto out;
 
 #ifdef KTRACE
 	if (KTRPOINT(curthread, KTR_NAMEI))
@@ -1030,7 +1044,7 @@ shm_remove(char *path, Fnv32_t fnv, struct ucred *ucred)
 
 int
 kern_shm_open2(struct thread *td, const char *userpath, int flags, mode_t mode,
-    int shmflags, struct filecaps *fcaps, const char *name __unused)
+    int shmflags, struct filecaps *fcaps, enum uio_seg seg, const char *name __unused)
 {
 	struct pwddesc *pdp;
 	struct shmfd *shmfd;
@@ -1108,7 +1122,7 @@ kern_shm_open2(struct thread *td, const char *userpath, int flags, mode_t mode,
 		shmfd->shm_seals = initial_seals;
 		shmfd->shm_flags = shmflags;
 	} else {
-		error = shm_copyin_path(td, userpath, &path);
+		error = shm_copyin_path(td, userpath, &path, seg);
 		if (error != 0) {
 			fdclose(td, fp, fd);
 			fdrop(fp, td);
@@ -1240,7 +1254,7 @@ freebsd12_shm_open(struct thread *td, struct freebsd12_shm_open_args *uap)
 {
 
 	return (kern_shm_open(td, uap->path, uap->flags | O_CLOEXEC,
-	    uap->mode, NULL));
+	    uap->mode, NULL, UIO_USERSPACE));
 }
 #endif
 
@@ -1251,7 +1265,7 @@ sys_shm_unlink(struct thread *td, struct shm_unlink_args *uap)
 	Fnv32_t fnv;
 	int error;
 
-	error = shm_copyin_path(td, uap->path, &path);
+	error = shm_copyin_path(td, uap->path, &path, UIO_USERSPACE);
 	if (error != 0)
 		return (error);
 
@@ -1306,11 +1320,11 @@ sys_shm_rename(struct thread *td, struct shm_rename_args *uap)
 		goto out;
 	}
 
-	error = shm_copyin_path(td, uap->path_from, &path_from);
+	error = shm_copyin_path(td, uap->path_from, &path_from, UIO_USERSPACE);
 	if (error != 0)
 		goto out;
 
-	error = shm_copyin_path(td, uap->path_to, &path_to);
+	error = shm_copyin_path(td, uap->path_to, &path_to, UIO_USERSPACE);
 	if (error != 0)
 		goto out;
 
@@ -1954,10 +1968,10 @@ SYSCTL_PROC(_kern_ipc, OID_AUTO, posix_shm_list,
 
 int
 kern_shm_open(struct thread *td, const char *path, int flags, mode_t mode,
-    struct filecaps *caps)
+    struct filecaps *caps, enum uio_seg seg)
 {
 
-	return (kern_shm_open2(td, path, flags, mode, 0, caps, NULL));
+	return (kern_shm_open2(td, path, flags, mode, 0, caps, seg, NULL));
 }
 
 /*
@@ -1975,5 +1989,5 @@ sys_shm_open2(struct thread *td, struct shm_open2_args *uap)
 {
 
 	return (kern_shm_open2(td, uap->path, uap->flags, uap->mode,
-	    uap->shmflags, NULL, uap->name));
+	    uap->shmflags, NULL, UIO_USERSPACE, uap->name));
 }
