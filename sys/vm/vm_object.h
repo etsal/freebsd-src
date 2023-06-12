@@ -211,6 +211,7 @@ struct vm_object {
 #define	OBJ_PAGERPRIV1	0x4000		/* Pager private */
 #define	OBJ_SHADOWLIST	0x8000		/* Object is on the shadow list. */
 #define	OBJ_NOSPLIT	0x10000		/* Object should not be split. */
+#define	OBJ_AURORA	0x20000		/* Object is in Aurora. */
 
 /*
  * Helpers to perform conversion between vm_object page indexes and offsets.
