@@ -398,6 +398,7 @@ SUBDIR=	\
 	usb \
 	${_vesa} \
 	virtio \
+	virtiofs \
 	vge \
 	${_viawd} \
 	videomode \
