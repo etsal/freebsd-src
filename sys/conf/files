@@ -3500,6 +3500,7 @@ dev/virtio/balloon/virtio_balloon.c	optional	virtio_balloon
 dev/virtio/scsi/virtio_scsi.c		optional	virtio_scsi
 dev/virtio/random/virtio_random.c	optional	virtio_random
 dev/virtio/console/virtio_console.c	optional	virtio_console
+dev/virtio/fs/virtio_fs.c		optional	virtio_fs
 dev/vkbd/vkbd.c			optional vkbd
 dev/vmgenc/vmgenc_acpi.c	optional acpi
 dev/vmware/vmxnet3/if_vmx.c		optional vmx
