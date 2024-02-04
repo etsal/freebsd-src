@@ -243,6 +243,7 @@ struct fuse_data {
 #define FSESS_WARN_CACHE_INCOHERENT 0x200000	/* Read cache incoherent */
 #define FSESS_WARN_WB_CACHE_INCOHERENT 0x400000	/* WB cache incoherent */
 #define	FSESS_WARN_ILLEGAL_INODE  0x800000 /* Illegal inode for new file */
+#define	FSESS_VIRTIOFS 		0x1000000 /* session backed by virtio device */
 #define FSESS_MNTOPTS_MASK	( \
 	FSESS_DAEMON_CAN_SPY | FSESS_PUSH_SYMLINKS_IN | \
 	FSESS_DEFAULT_PERMISSIONS | FSESS_INTR)
@@ -415,6 +416,12 @@ static inline bool
 fdata_get_dead(struct fuse_data *data)
 {
 	return (data->dataflags & FSESS_DEAD);
+}
+
+static inline bool
+fsess_get_virtiofs(struct fuse_data *data)
+{
+	return (data->dataflags & FSESS_VIRTIOFS);
 }
 
 struct fuse_dispatcher {
