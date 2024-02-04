@@ -47,5 +47,6 @@
 #define VIRTIO_ID_INPUT		18
 #define VIRTIO_ID_VSOCK		19
 #define VIRTIO_ID_CRYPTO	20
+#define VIRTIO_ID_FS		26
 
 #endif /* _VIRTIO_IDS_H_ */
