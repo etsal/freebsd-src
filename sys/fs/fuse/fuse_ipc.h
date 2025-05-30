@@ -65,6 +65,7 @@
 
 #include <sys/param.h>
 #include <sys/refcount.h>
+#include <sys/taskqueue.h>
 
 enum fuse_data_cache_mode {
 	FUSE_CACHE_UC,
@@ -130,6 +131,8 @@ struct fuse_ticket {
 	struct mtx			tk_aw_mtx;
 	fuse_handler_t			*tk_aw_handler;
 	TAILQ_ENTRY(fuse_ticket)	tk_aw_link;
+
+	struct task			tk_vtfs_tk;
 };
 
 #define FT_ANSW  0x01  /* request of ticket has already been answered */
@@ -168,6 +171,8 @@ fticket_opcode(struct fuse_ticket *ftick)
 }
 
 int fticket_pull(struct fuse_ticket *ftick, struct uio *uio);
+size_t fticket_out_size(struct fuse_ticket *ftick);
+int fuse_body_audit(struct fuse_ticket *ftick, size_t blen);
 
 /*
  * The data representing a FUSE session.
@@ -217,6 +222,16 @@ struct fuse_data {
 	uint64_t			isimpl;
 	uint64_t			mnt_flag;
 	enum fuse_data_cache_mode	cache_mode;
+
+	/* Fields necessary for virtiofs. */
+	struct vtfs_softc 		*vtfs;
+	int				(*virtiofs_enqueue_cb)(struct fuse_ticket *);
+	void 				(*virtiofs_unmount_cb)(struct mount *, struct fuse_data *);
+
+	bool				virtiofs_destroy_acked;
+	struct mtx			virtiofs_mtx;
+	struct cv			virtiofs_cv;
+
 };
 
 #define FSESS_DEAD                0x0001 /* session is to be closed */
@@ -241,6 +256,7 @@ struct fuse_data {
 #define	FSESS_SETXATTR_EXT	  0x8000000 /* extended fuse_setxattr_in */
 #define FSESS_AUTO_UNMOUNT	  0x10000000 /* perform unmount when server dies */
 #define FSESS_WARN_LSEXTATTR_NUL 0x20000000 /* Non nul-terminated xattr list */
+#define	FSESS_VIRTIOFS 		0x40000000 /* session backed by virtio device */
 #define FSESS_MNTOPTS_MASK	( \
 	FSESS_DAEMON_CAN_SPY | FSESS_PUSH_SYMLINKS_IN | \
 	FSESS_DEFAULT_PERMISSIONS | FSESS_INTR | FSESS_AUTO_UNMOUNT)
@@ -413,6 +429,12 @@ static inline bool
 fdata_get_dead(struct fuse_data *data)
 {
 	return (data->dataflags & FSESS_DEAD);
+}
+
+static inline bool
+fsess_get_virtiofs(struct fuse_data *data)
+{
+	return (data->dataflags & FSESS_VIRTIOFS);
 }
 
 struct fuse_dispatcher {
