@@ -418,6 +418,7 @@ SUBDIR=	\
 	${_vesa} \
 	${_vf_i2c} \
 	virtio \
+	virtiofs \
 	vge \
 	${_viawd} \
 	videomode \

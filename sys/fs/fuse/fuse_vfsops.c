@@ -83,14 +83,18 @@
 #include <sys/fcntl.h>
 #define EXTERR_CATEGORY EXTERR_CAT_FUSE_VFS
 #include <sys/exterrvar.h>
+#include <sys/sglist.h>
 
 #include "fuse.h"
 #include "fuse_node.h"
 #include "fuse_ipc.h"
 #include "fuse_internal.h"
+#include "fuse_vfsops.h"
 
 #include <sys/priv.h>
 #include <security/mac/mac_framework.h>
+
+#include <dev/virtio/fs/virtio_fs.h>
 
 SDT_PROVIDER_DECLARE(fusefs);
 /* 
@@ -110,13 +114,6 @@ SDT_PROBE_DEFINE2(fusefs, , vfsops, trace, "int", "char*");
 #ifndef PRIV_VFS_FUSE_SYNC_UNMOUNT
 #define PRIV_VFS_FUSE_SYNC_UNMOUNT PRIV_VFS_MOUNT_NONUSER
 #endif
-
-static vfs_fhtovp_t fuse_vfsop_fhtovp;
-static vfs_mount_t fuse_vfsop_mount;
-static vfs_unmount_t fuse_vfsop_unmount;
-static vfs_root_t fuse_vfsop_root;
-static vfs_statfs_t fuse_vfsop_statfs;
-static vfs_vget_t fuse_vfsop_vget;
 
 struct vfsops fuse_vfsops = {
 	.vfs_fhtovp = fuse_vfsop_fhtovp,
@@ -264,7 +261,7 @@ out:
 	return err;
 }
 
-static int
+int
 fuse_vfsop_fhtovp(struct mount *mp, struct fid *fhp, int flags,
 	struct vnode **vpp)
 {
@@ -292,7 +289,7 @@ fuse_vfsop_fhtovp(struct mount *mp, struct fid *fhp, int flags,
 	return (0);
 }
 
-static int
+int
 fuse_vfsop_mount(struct mount *mp)
 {
 	int err;
@@ -476,7 +473,7 @@ out:
 	return err;
 }
 
-static int
+int
 fuse_vfsop_unmount(struct mount *mp, int mntflags)
 {
 	int err = 0;
@@ -511,6 +508,12 @@ fuse_vfsop_unmount(struct mount *mp, int mntflags)
 	if (fdata_get_dead(data)) {
 		goto alreadydead;
 	}
+
+	if (fsess_get_virtiofs(data)) {
+		data->virtiofs_unmount_cb(mp, data);
+		goto alreadydead;
+	}
+
 	if (fsess_maybe_impl(mp, FUSE_DESTROY)) {
 		fdisp_init(&fdi, 0);
 		fdisp_make(&fdi, FUSE_DESTROY, mp, 0, td, NULL);
@@ -532,14 +535,15 @@ alreadydead:
 	mp->mnt_data = NULL;
 	MNT_IUNLOCK(mp);
 
-	dev_rel(fdev);
+	if (fdev != NULL)
+		dev_rel(fdev);
 
 	return 0;
 }
 
 SDT_PROBE_DEFINE1(fusefs, , vfsops, invalidate_without_export,
 	"struct mount*");
-static int
+int
 fuse_vfsop_vget(struct mount *mp, ino_t ino, int flags, struct vnode **vpp)
 {
 	struct fuse_data *data = fuse_get_mpdata(mp);
@@ -620,7 +624,7 @@ out:
 	return error;
 }
 
-static int
+int
 fuse_vfsop_root(struct mount *mp, int lkflags, struct vnode **vpp)
 {
 	struct fuse_data *data = fuse_get_mpdata(mp);
@@ -656,7 +660,7 @@ fuse_vfsop_root(struct mount *mp, int lkflags, struct vnode **vpp)
 	return err;
 }
 
-static int
+int
 fuse_vfsop_statfs(struct mount *mp, struct statfs *sbp)
 {
 	struct fuse_dispatcher fdi;
