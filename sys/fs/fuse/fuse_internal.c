@@ -882,6 +882,28 @@ fuse_internal_forget_send(struct mount *mp,
 	fdisp_destroy(&fdi);
 }
 
+static int
+fuse_internal_elock_vnode(struct vnode *vp, bool *must_downgrade)
+{
+	int ltype;
+
+	*must_downgrade = false;
+
+	ltype = VOP_ISLOCKED(vp);
+	if (ltype == LK_EXCLUSIVE)
+		return 0;
+
+	vn_lock(vp, LK_UPGRADE | LK_RETRY);
+	*must_downgrade = true;
+
+	if (VN_IS_DOOMED(vp)) {
+		fuse_internal_vnode_disappear(vp);
+		return ENOENT;
+	}
+
+	return (0);
+}
+
 /* Fetch the vnode's attributes from the daemon*/
 int
 fuse_internal_do_getattr(struct vnode *vp, struct vattr *vap,
@@ -891,11 +913,8 @@ fuse_internal_do_getattr(struct vnode *vp, struct vattr *vap,
 	struct fuse_vnode_data *fvdat = VTOFUD(vp);
 	struct fuse_getattr_in *fgai;
 	struct fuse_attr_out *fao;
-	off_t old_filesize = fvdat->cached_attrs.va_size;
-	struct timespec old_atime = fvdat->cached_attrs.va_atime;
-	struct timespec old_ctime = fvdat->cached_attrs.va_ctime;
-	struct timespec old_mtime = fvdat->cached_attrs.va_mtime;
 	__enum_uint8(vtype) vtyp;
+	bool must_downgrade = false;
 	int err;
 
 	ASSERT_VOP_LOCKED(vp, __func__);
@@ -917,19 +936,29 @@ fuse_internal_do_getattr(struct vnode *vp, struct vattr *vap,
 
 	fao = (struct fuse_attr_out *)fdi.answ;
 	vtyp = IFTOVT(fao->attr.mode);
+
+	/*
+	 * The fuse_internal_cache_attrs call updates the node's
+	 * local vattrs. We need the exclusive vnode lock to do so.
+	 */
+
+	err = fuse_internal_elock_vnode(vp, &must_downgrade);
+	if (err)
+		goto out;
+
 	if (fvdat->flag & FN_SIZECHANGE)
-		fao->attr.size = old_filesize;
+		fao->attr.size = fvdat->cached_attrs.va_size;
 	if (fvdat->flag & FN_ATIMECHANGE) {
-		fao->attr.atime = old_atime.tv_sec;
-		fao->attr.atimensec = old_atime.tv_nsec;
+		fao->attr.atime = fvdat->cached_attrs.va_atime.tv_sec;
+		fao->attr.atimensec = fvdat->cached_attrs.va_atime.tv_nsec;
 	}
 	if (fvdat->flag & FN_CTIMECHANGE) {
-		fao->attr.ctime = old_ctime.tv_sec;
-		fao->attr.ctimensec = old_ctime.tv_nsec;
+		fao->attr.ctime = fvdat->cached_attrs.va_ctime.tv_sec;
+		fao->attr.ctimensec = fvdat->cached_attrs.va_ctime.tv_nsec;
 	}
 	if (fvdat->flag & FN_MTIMECHANGE) {
-		fao->attr.mtime = old_mtime.tv_sec;
-		fao->attr.mtimensec = old_mtime.tv_nsec;
+		fao->attr.mtime = fvdat->cached_attrs.va_mtime.tv_sec;
+		fao->attr.mtimensec = fvdat->cached_attrs.va_mtime.tv_nsec;
 	}
 	fuse_internal_cache_attrs(vp, &fao->attr, fao->attr_valid,
 		fao->attr_valid_nsec, vap, true);
@@ -939,6 +968,9 @@ fuse_internal_do_getattr(struct vnode *vp, struct vattr *vap,
 	}
 
 out:
+	if (must_downgrade)
+		vn_lock(vp, LK_DOWNGRADE | LK_RETRY);
+
 	fdisp_destroy(&fdi);
 	return err;
 }
