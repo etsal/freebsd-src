@@ -257,12 +257,15 @@ fuse_internal_cache_attrs(struct vnode *vp, struct fuse_attr *attr,
 	struct fuse_vnode_data *fvdat;
 	struct fuse_data *data;
 	struct vattr *vp_cache_at;
+	off_t size;
 
 	mp = vnode_mount(vp);
 	fvdat = VTOFUD(vp);
 	data = fuse_get_mpdata(mp);
 
 	ASSERT_CACHED_ATTRS_LOCKED(vp);
+
+	size = attr->size;
 
 	fuse_validity_2_bintime(attr_valid, attr_valid_nsec,
 		&fvdat->attr_cache_timeout);
@@ -313,10 +316,15 @@ fuse_internal_cache_attrs(struct vnode *vp, struct fuse_attr *attr,
 	}
 
 	/* Fix our buffers if the filesize changed without us knowing */
-	if (vnode_isreg(vp) && attr->size != fvdat->cached_attrs.va_size) {
+	if (vnode_isreg(vp) && attr->size != fvdat->cached_attrs.va_size &&
+	    !(fvdat->flag & FN_SIZECHANGE)) {
 		(void)fuse_vnode_setsize(vp, attr->size, from_server);
 		fvdat->cached_attrs.va_size = attr->size;
 	}
+
+	/* If we have a local dirty copy of the size, use it. */
+	if (fvdat->flag & FN_SIZECHANGE && fvdat->cached_attrs.va_size != VNOVAL)
+		size = fvdat->cached_attrs.va_size;
 
 	if (attr_valid > 0 || attr_valid_nsec > 0)
 		vp_cache_at = &(fvdat->cached_attrs);
@@ -332,7 +340,7 @@ fuse_internal_cache_attrs(struct vnode *vp, struct fuse_attr *attr,
 	vp_cache_at->va_uid       = attr->uid;
 	vp_cache_at->va_gid       = attr->gid;
 	vp_cache_at->va_rdev      = attr->rdev;
-	vp_cache_at->va_size      = attr->size;
+	vp_cache_at->va_size      = size;
 	/* XXX on i386, seconds are truncated to 32 bits */
 	vp_cache_at->va_atime.tv_sec  = attr->atime;
 	vp_cache_at->va_atime.tv_nsec = attr->atimensec;
@@ -895,7 +903,7 @@ fuse_internal_elock_vnode(struct vnode *vp, bool *must_downgrade)
 
 	ltype = VOP_ISLOCKED(vp);
 	if (ltype == LK_EXCLUSIVE)
-		return 0;
+		return (0);
 
 	vn_lock(vp, LK_UPGRADE | LK_RETRY);
 	*must_downgrade = true;
