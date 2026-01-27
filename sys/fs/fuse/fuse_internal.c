@@ -886,6 +886,28 @@ fuse_internal_forget_send(struct mount *mp,
 	fdisp_destroy(&fdi);
 }
 
+static int
+fuse_internal_elock_vnode(struct vnode *vp, bool *must_downgrade)
+{
+	int ltype;
+
+	*must_downgrade = false;
+
+	ltype = VOP_ISLOCKED(vp);
+	if (ltype == LK_EXCLUSIVE)
+		return 0;
+
+	vn_lock(vp, LK_UPGRADE | LK_RETRY);
+	*must_downgrade = true;
+
+	if (VN_IS_DOOMED(vp)) {
+		fuse_internal_vnode_disappear(vp);
+		return ENOENT;
+	}
+
+	return (0);
+}
+
 /* Fetch the vnode's attributes from the daemon*/
 int
 fuse_internal_do_getattr(struct vnode *vp, struct vattr *vap,
@@ -896,6 +918,7 @@ fuse_internal_do_getattr(struct vnode *vp, struct vattr *vap,
 	struct fuse_getattr_in *fgai;
 	struct fuse_attr_out *fao;
 	__enum_uint8(vtype) vtyp;
+	bool must_downgrade = false;
 	int err;
 
 	fdisp_init(&fdi, sizeof(*fgai));
@@ -917,6 +940,15 @@ fuse_internal_do_getattr(struct vnode *vp, struct vattr *vap,
 	vtyp = IFTOVT(fao->attr.mode);
 
 	CACHED_ATTR_LOCK(vp);
+	/*
+	 * The fuse_internal_cache_attrs call updates the node's
+	 * local vattrs. We need the exclusive vnode lock to do so.
+	 */
+
+	err = fuse_internal_elock_vnode(vp, &must_downgrade);
+	if (err)
+		goto out;
+
 	if (fvdat->flag & FN_SIZECHANGE)
 		fao->attr.size = fvdat->cached_attrs.va_size;
 	if (fvdat->flag & FN_ATIMECHANGE) {
@@ -942,6 +974,9 @@ fuse_internal_do_getattr(struct vnode *vp, struct vattr *vap,
 	}
 
 out:
+	if (must_downgrade)
+		vn_lock(vp, LK_DOWNGRADE | LK_RETRY);
+
 	fdisp_destroy(&fdi);
 	return err;
 }
