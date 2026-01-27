@@ -257,6 +257,7 @@ fuse_internal_cache_attrs(struct vnode *vp, struct fuse_attr *attr,
 	struct fuse_vnode_data *fvdat;
 	struct fuse_data *data;
 	struct vattr *vp_cache_at;
+	off_t size;
 
 	mp = vnode_mount(vp);
 	fvdat = VTOFUD(vp);
@@ -264,13 +265,25 @@ fuse_internal_cache_attrs(struct vnode *vp, struct fuse_attr *attr,
 
 	ASSERT_CACHED_ATTRS_LOCKED(vp);
 
+	size = attr->size;
+
 	fuse_validity_2_bintime(attr_valid, attr_valid_nsec,
 		&fvdat->attr_cache_timeout);
 
+	/*
+	 * Check if the file has been changed from under us. We
+	 * can only reliably check whether the server has grown
+	 * the file unilaterally, not shrunk. This is because
+	 * unflushed writes on our end can lead us to report
+	 * larger sizes compared to the result of a getattr
+	 * to the server even if we have set FN_SIZECHANGE.
+	 * The opposite isn't true, because we clear the
+	 * FN_SIZECHANGE flag if we truncate the file.
+	 */
 	if (vnode_isreg(vp) &&
 	    fvdat->cached_attrs.va_size != VNOVAL &&
 	    fvdat->flag & FN_SIZECHANGE &&
-	    attr->size != fvdat->cached_attrs.va_size)
+	    attr->size > fvdat->cached_attrs.va_size)
 	{
 		if (data->cache_mode == FUSE_CACHE_WB)
 		{
@@ -313,10 +326,15 @@ fuse_internal_cache_attrs(struct vnode *vp, struct fuse_attr *attr,
 	}
 
 	/* Fix our buffers if the filesize changed without us knowing */
-	if (vnode_isreg(vp) && attr->size != fvdat->cached_attrs.va_size) {
+	if (vnode_isreg(vp) && attr->size != fvdat->cached_attrs.va_size &&
+	    !(fvdat->flag & FN_SIZECHANGE)) {
 		(void)fuse_vnode_setsize(vp, attr->size, from_server);
 		fvdat->cached_attrs.va_size = attr->size;
 	}
+
+	/* If we have a local dirty copy of the size, use it. */
+	if (fvdat->flag & FN_SIZECHANGE && fvdat->cached_attrs.va_size != VNOVAL)
+		size = fvdat->cached_attrs.va_size;
 
 	if (attr_valid > 0 || attr_valid_nsec > 0)
 		vp_cache_at = &(fvdat->cached_attrs);
@@ -332,7 +350,7 @@ fuse_internal_cache_attrs(struct vnode *vp, struct fuse_attr *attr,
 	vp_cache_at->va_uid       = attr->uid;
 	vp_cache_at->va_gid       = attr->gid;
 	vp_cache_at->va_rdev      = attr->rdev;
-	vp_cache_at->va_size      = attr->size;
+	vp_cache_at->va_size      = size;
 	/* XXX on i386, seconds are truncated to 32 bits */
 	vp_cache_at->va_atime.tv_sec  = attr->atime;
 	vp_cache_at->va_atime.tv_nsec = attr->atimensec;

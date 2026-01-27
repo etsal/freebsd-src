@@ -1532,6 +1532,65 @@ TEST_F(WriteBackAsync, timestamps)
 	leak(fd);
 }
 
+/*
+ * When deciding whether to report the cached file size or that of the server, FUSE
+ * can report either the cached value or a new value from the server. If the file
+ * has been modified by a write locally that has not been flushed to the server, it
+ * should pick the local cached value. Ensure that the local file size takes precedence
+ * then over the server's (the alternative would trigger spurious file truncations).
+ */
+TEST_F(WriteBackAsync, lookup_dont_clobber_pending_size)
+{
+	const char FULLPATH[] = "mountpoint/some_file.txt";
+	const char RELPATH[] = "some_file.txt";
+	const char *CONTENTS = "abcdefgh";
+	ssize_t bufsize = strlen(CONTENTS);
+	uint64_t ino = 42;
+	uint64_t server_size = 0;
+	mode_t mode = S_IFREG | 0644;
+	int fd;
+	struct stat sb;
+
+	EXPECT_LOOKUP(FUSE_ROOT_ID, RELPATH)
+	.WillRepeatedly(Invoke(
+		ReturnImmediate([=](auto in __unused, auto& out) {
+		SET_OUT_HEADER_LEN(out, entry);
+		out.body.entry.attr.mode = mode;
+		out.body.entry.nodeid = ino;
+		out.body.entry.attr.nlink = 1;
+		out.body.entry.attr.size = server_size;
+		out.body.entry.attr_valid = UINT64_MAX;
+	})));
+	expect_open(ino, 0, 1);
+
+	EXPECT_CALL(*m_mock, process(
+		ResultOf([=](auto in) {
+			return (in.header.opcode == FUSE_GETATTR &&
+				in.header.nodeid == ino);
+		}, Eq(true)),
+		_)
+	).WillRepeatedly(Invoke(
+	ReturnImmediate([=](auto i __unused, auto& out) {
+		SET_OUT_HEADER_LEN(out, attr);
+		out.body.attr.attr.ino = ino;
+		out.body.attr.attr.mode = mode;
+		out.body.attr.attr_valid = UINT64_MAX;
+		out.body.attr.attr.size = server_size;
+	})));
+
+	fd = open(FULLPATH, O_RDWR);
+	ASSERT_LE(0, fd) << strerror(errno);
+
+	/* Extend the file. */
+	ASSERT_EQ(bufsize, write(fd, CONTENTS, bufsize)) << strerror(errno);
+
+	/* Do another getattr call and ensure the file wasn't clobbered. */
+	ASSERT_EQ(0, stat(FULLPATH, &sb)) << strerror(errno);
+	EXPECT_EQ(bufsize, sb.st_size);
+
+	leak(fd);
+}
+
 /* Any dirty timestamp fields should be flushed during a SETATTR */
 TEST_F(WriteBackAsync, timestamps_during_setattr)
 {
